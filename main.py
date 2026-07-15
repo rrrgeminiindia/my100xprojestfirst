@@ -1,51 +1,56 @@
-import gradio as gr
-import requests
+import os
+
+from fastapi import FastAPI, HTTPException
+from groq import Groq
+from pydantic import BaseModel
+
+app = FastAPI()
 
 
-RENDER_API_URL = "https://my100xprojestfirst.onrender.com/diagnose"
+class DiagnoseRequest(BaseModel):
+    workflow_description: str
 
 
-def diagnose(workflow_description):
-    if not workflow_description.strip():
-        return "Please enter a workflow description."
+@app.get("/")
+def home():
+    return {"status": "running"}
+
+
+@app.post("/diagnose")
+def diagnose(request: DiagnoseRequest):
+    api_key = os.getenv("GROQ_API_KEY")
+
+    if not api_key:
+        raise HTTPException(
+            status_code=500,
+            detail="GROQ_API_KEY is not configured",
+        )
 
     try:
-        response = requests.post(
-            RENDER_API_URL,
-            json={
-                "workflow_description": workflow_description
-            },
-            timeout=120
+        client = Groq(api_key=api_key)
+
+        response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are an expert automation architect.",
+                },
+                {
+                    "role": "user",
+                    "content": request.workflow_description,
+                },
+            ],
+            temperature=0.4,
+            max_tokens=4096,
         )
 
-        response.raise_for_status()
-        data = response.json()
+        return {
+            "diagnosis": response.choices[0].message.content
+        }
 
-        return data.get(
-            "diagnosis",
-            "The backend did not return a diagnosis."
-        )
-
-    except requests.exceptions.Timeout:
-        return "The Render backend took too long to respond."
-
-    except requests.exceptions.RequestException as error:
-        return f"Backend request failed: {error}"
-
-
-demo = gr.Interface(
-    fn=diagnose,
-    inputs=gr.Textbox(
-        label="Workflow Description",
-        placeholder="Describe the workflow you want to automate...",
-        lines=8
-    ),
-    outputs=gr.Markdown(
-        label="Automation Diagnosis Plan"
-    ),
-    title="Automation Diagnosis Tool"
-)
-
-
-if __name__ == "__main__":
-    demo.launch()
+    except Exception as error:
+        raise HTTPException(
+            status_code=500,
+            detail=str(error),
+        ) from error
