@@ -1,87 +1,51 @@
-import os
+import gradio as gr
+import requests
 
-from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
-from groq import Groq
-from pydantic import BaseModel
 
-load_dotenv()
+RENDER_API_URL = "https://my100xprojestfirst.onrender.com/diagnose"
 
-app = FastAPI(
-    title="Automation Diagnosis API",
-    version="1.0.0",
+
+def diagnose(workflow_description):
+    if not workflow_description.strip():
+        return "Please enter a workflow description."
+
+    try:
+        response = requests.post(
+            RENDER_API_URL,
+            json={
+                "workflow_description": workflow_description
+            },
+            timeout=120
+        )
+
+        response.raise_for_status()
+        data = response.json()
+
+        return data.get(
+            "diagnosis",
+            "The backend did not return a diagnosis."
+        )
+
+    except requests.exceptions.Timeout:
+        return "The Render backend took too long to respond."
+
+    except requests.exceptions.RequestException as error:
+        return f"Backend request failed: {error}"
+
+
+demo = gr.Interface(
+    fn=diagnose,
+    inputs=gr.Textbox(
+        label="Workflow Description",
+        placeholder="Describe the workflow you want to automate...",
+        lines=8
+    ),
+    outputs=gr.Markdown(
+        label="Automation Diagnosis Plan"
+    ),
+    title="Automation Diagnosis Tool"
 )
 
 
-class DiagnoseRequest(BaseModel):
-    workflow_description: str
-
-
-@app.get("/")
-def home():
-    return {
-        "status": "running",
-        "message": "Automation Diagnosis API is live",
-    }
-
-
-@app.get("/health")
-def health():
-    return {"status": "healthy"}
-
-
-@app.post("/diagnose")
-def diagnose(request: DiagnoseRequest):
-    api_key = os.getenv("GROQ_API_KEY")
-
-    if not api_key:
-        raise HTTPException(
-            status_code=500,
-            detail="GROQ_API_KEY is not configured",
-        )
-
-    system_instruction = """
-You are an expert Automation Architect and Business Analyst coaching a junior
-analyst who is building their first automation.
-
-Generate a detailed Automation Diagnosis Plan in professional Markdown with:
-
-## Executive Summary
-## Workflow Analysis
-## Recommended Tech Stack
-## Step-by-Step Implementation Blueprint
-## Key Risks & Considerations
-## Your First Action Item RIGHT NOW
-"""
-
-    try:
-        client = Groq(api_key=api_key)
-
-        response = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=[
-                {
-                    "role": "system",
-                    "content": system_instruction,
-                },
-                {
-                    "role": "user",
-                    "content": (
-                        "Diagnose this workflow and generate an Automation "
-                        f"Diagnosis Plan:\n\n{request.workflow_description}"
-                    ),
-                },
-            ],
-            temperature=0.4,
-            max_tokens=4096,
-        )
-
-        return {
-            "diagnosis": response.choices[0].message.content
-        }
-
-    except Exception as error:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Groq API error: {error}",
-        ) from error
+if __name__ == "__main__":
+    demo.launch()
