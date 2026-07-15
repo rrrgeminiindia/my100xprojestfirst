@@ -1,43 +1,87 @@
 import os
-from dotenv import load_dotenv
-from groq import Groq
 
-# Load environment variables from .env
+from dotenv import load_dotenv
+from fastapi import FastAPI, HTTPException
+from groq import Groq
+from pydantic import BaseModel
+
 load_dotenv()
 
-# Read API key
-api_key = os.getenv("GROQ_API_KEY")
+app = FastAPI(
+    title="Automation Diagnosis API",
+    version="1.0.0",
+)
 
-# Check if API key exists
-if not api_key:
-    raise ValueError("GROQ_API_KEY is missing from the .env file")
 
-print("✅ API key loaded successfully.")
+class DiagnoseRequest(BaseModel):
+    workflow_description: str
 
-# Create Groq client
-client = Groq(api_key=api_key)
 
-try:
-    # Send request to Groq
-    response = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        messages=[
-            {
-                "role": "system",
-                "content": "You are a helpful AI assistant."
-            },
-            {
-                "role": "user",
-                "content": "Explain what Python is in one paragraph."
-            }
-        ],
-        temperature=0.5,
-        max_tokens=300
-    )
+@app.get("/")
+def home():
+    return {
+        "status": "running",
+        "message": "Automation Diagnosis API is live",
+    }
 
-    # Print response
-    print("\n========== RESPONSE ==========\n")
-    print(response.choices[0].message.content)
 
-except Exception as e:
-    print(f"❌ Error: {e}")
+@app.get("/health")
+def health():
+    return {"status": "healthy"}
+
+
+@app.post("/diagnose")
+def diagnose(request: DiagnoseRequest):
+    api_key = os.getenv("GROQ_API_KEY")
+
+    if not api_key:
+        raise HTTPException(
+            status_code=500,
+            detail="GROQ_API_KEY is not configured",
+        )
+
+    system_instruction = """
+You are an expert Automation Architect and Business Analyst coaching a junior
+analyst who is building their first automation.
+
+Generate a detailed Automation Diagnosis Plan in professional Markdown with:
+
+## Executive Summary
+## Workflow Analysis
+## Recommended Tech Stack
+## Step-by-Step Implementation Blueprint
+## Key Risks & Considerations
+## Your First Action Item RIGHT NOW
+"""
+
+    try:
+        client = Groq(api_key=api_key)
+
+        response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[
+                {
+                    "role": "system",
+                    "content": system_instruction,
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        "Diagnose this workflow and generate an Automation "
+                        f"Diagnosis Plan:\n\n{request.workflow_description}"
+                    ),
+                },
+            ],
+            temperature=0.4,
+            max_tokens=4096,
+        )
+
+        return {
+            "diagnosis": response.choices[0].message.content
+        }
+
+    except Exception as error:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Groq API error: {error}",
+        ) from error
