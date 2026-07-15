@@ -2,7 +2,7 @@
 
 A CLI tool powered by **Gemini 2.5 Flash** that takes a plain-English description of a manual workflow and generates a structured **Automation Diagnosis Plan** — perfect for an analyst building their first automation.
 
----
+---  
 
 ## ⚡ Quick Start
 
